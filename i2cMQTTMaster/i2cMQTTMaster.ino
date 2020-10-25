@@ -1,5 +1,7 @@
 #include <Wire.h>
 #include "wireUtils.h"
+#include "credentials.h"
+#include "IOTClients.h"
 
 #define I2C_SLAVE_ADDRESS 0x26
 
@@ -11,21 +13,23 @@
 #define LOCK_PARAMETER 1
 #define LOCK_STATUS_PARAMETER 2
 
-#define MESSAGE_PARAMETERS_COMMAND 2
-#define MESSAGE_PARAMETERS_BLOCKSIZE 1
-#define MESSAGE_PARAMETERS_TOTAL_BLOCKS 2
-#define MESSAGE_PARAMETERS_STRING_LENGTH 3
-
-#define TRANSFER_JSON_MESSAGE_COMMAND 3
+#define READ_SENSOR_VALUES_COMMAND 2
+#define LIGHT_SENSOR_VALUE_PARAMETER 0
+#define TEMP_SENSOR_VALUE_PARAMETER 1
+#define HUMIDITY_SENSOR_VALUE_PARAMETER 2
 
 #define SDA D1
 #define SCL D2
 
-struct SensorMessageParameters {
-  byte blockSize;
-  byte totalBlocks;
-  byte stringLength;
+struct SensorValues {
+  int lightSensorValue;
+  float tempSensorValue;
+  float humiditySensorValue;
 };
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+MQTTClient* mqttClient = new MQTTClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
 
 void refreshI2CConnection() {
   if (checkI2CConnection()) {
@@ -38,7 +42,7 @@ void refreshI2CConnection() {
   }
 }
 
-void sendI2CCommandWithParameter(byte command, byte parameter, int delayTime = 500) {
+void sendI2CCommandWithParameter(byte command, byte parameter, int delayTime = 250) {
   refreshI2CConnection();
   Serial.print("Sending I2C command {");Serial.print(command);Serial.print("} with parameter {");Serial.print(parameter);Serial.println("}");
   Wire.beginTransmission(I2C_SLAVE_ADDRESS); 
@@ -48,7 +52,7 @@ void sendI2CCommandWithParameter(byte command, byte parameter, int delayTime = 5
   delay(delayTime);
 }
 
-byte fetchSingleByte(byte command, byte parameter, int delayTime = 500) {
+byte fetchSingleByte(byte command, byte parameter, int delayTime = 250) {
   sendI2CCommandWithParameter(command, parameter, delayTime);
   Wire.requestFrom(I2C_SLAVE_ADDRESS, 1);
   if (Wire.available()) {
@@ -59,13 +63,35 @@ byte fetchSingleByte(byte command, byte parameter, int delayTime = 500) {
   return 255;
 }
 
-bool unlockLockDevice(bool lock, int delayTime = 750, int lockHoldDelay = 1000, int confirmLockStatusTries = 5) {
+float fetchFloatFrom(byte command, byte parameter, int delayTime = 250) {
+  sendI2CCommandWithParameter(command, parameter, delayTime);
+  String dataString = "";
+  Wire.requestFrom(I2C_SLAVE_ADDRESS, 7);
+  while (Wire.available()) {
+    char c = Wire.read();
+    dataString = dataString + c;
+  }
+  return dataString.toFloat();
+}
+
+int fetchIntegerFrom(byte command, byte parameter, int delayTime = 250) {
+  sendI2CCommandWithParameter(command, parameter, delayTime);
+  Wire.requestFrom(I2C_SLAVE_ADDRESS, 2);
+  if (Wire.available()) {
+    byte hByte = Wire.read();
+    byte lByte = Wire.read();
+    return (int(hByte << 8) + int(lByte));
+  }
+  return -1;
+}
+
+bool unlockLockDevice(bool lock, int delayTime = 250, int lockHoldDelay = 350, int confirmLockStatusTries = 5) {
   if (lock) {
     Serial.println("Locking slave device");
     if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_PARAMETER, delayTime) == DEVICE_LOCKED) {
       delay(lockHoldDelay);
       for (int currentTry = 0; currentTry < confirmLockStatusTries; currentTry++) {
-        if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_STATUS_PARAMETER) == LOCK_SET_STATUS) {
+        if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_STATUS_PARAMETER, 250) == LOCK_SET_STATUS) {
           Serial.println("Successfully locked slave device");
           return true;
         }
@@ -78,7 +104,7 @@ bool unlockLockDevice(bool lock, int delayTime = 750, int lockHoldDelay = 1000, 
     if (fetchSingleByte(LOCK_UNLOCK_COMMAND, UNLOCK_PARAMETER) == DEVICE_UNLOCKED) {
       delay(lockHoldDelay);
       for (int currentTry = 0; currentTry < confirmLockStatusTries; currentTry++) {
-        if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_STATUS_PARAMETER) != LOCK_SET_STATUS) {
+        if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_STATUS_PARAMETER, 250) != LOCK_SET_STATUS) {
           Serial.println("Successfully unlocked slave device");
           return true;
         }
@@ -89,6 +115,22 @@ bool unlockLockDevice(bool lock, int delayTime = 750, int lockHoldDelay = 1000, 
   return false;
 }
 
+SensorValues fetchSensorValuesFromSlave() {
+  int lightSensorValue = fetchIntegerFrom(READ_SENSOR_VALUES_COMMAND, LIGHT_SENSOR_VALUE_PARAMETER);
+  delay(50);
+  float tempSensorValue = fetchFloatFrom(READ_SENSOR_VALUES_COMMAND, TEMP_SENSOR_VALUE_PARAMETER);
+  delay(50);
+  float humiditySensorValue = fetchFloatFrom(READ_SENSOR_VALUES_COMMAND, HUMIDITY_SENSOR_VALUE_PARAMETER);
+  delay(50);
+  
+  Serial.println("Received sensor values: ");
+  Serial.print("  light sensor value: ");Serial.println(lightSensorValue);
+  Serial.print("  temp sensor value: ");Serial.println(tempSensorValue);
+  Serial.print("  humidity sensor value: ");Serial.println(humiditySensorValue);
+  SensorValues sensorValues = {lightSensorValue, tempSensorValue, humiditySensorValue};
+  return sensorValues;
+}
+
 bool lockSlaveDevice() {
   return unlockLockDevice(true);
 }
@@ -97,55 +139,26 @@ bool unlockSlaveDevice() {
   return unlockLockDevice(false);
 }
 
-SensorMessageParameters fetchMessageParametersFromSlave() {
-  byte blockSize = fetchSingleByte(MESSAGE_PARAMETERS_COMMAND, MESSAGE_PARAMETERS_BLOCKSIZE);
-  delay(500);
-  byte totalBlocks = fetchSingleByte(MESSAGE_PARAMETERS_COMMAND, MESSAGE_PARAMETERS_TOTAL_BLOCKS);
-  delay(500);
-  byte stringLength = fetchSingleByte(MESSAGE_PARAMETERS_COMMAND, MESSAGE_PARAMETERS_STRING_LENGTH);
-  delay(500);
-  
-  Serial.println("Received message parameters: ");
-  Serial.print("  block size: ");Serial.println(blockSize);
-  Serial.print("  total blocks: ");Serial.println(totalBlocks);
-  Serial.print("  string length: ");Serial.println(stringLength);
-  SensorMessageParameters messageParameters = {blockSize, totalBlocks, stringLength};
-  return messageParameters;
-}
-
-int fetchSensorDataFromSlave(SensorMessageParameters messageParameters) {
-  for(int currentBlock = 0; currentBlock < messageParameters.totalBlocks; currentBlock++) {
-    sendI2CCommandWithParameter(TRANSFER_JSON_MESSAGE_COMMAND, currentBlock);
-    
-    if (currentBlock == (messageParameters.totalBlocks -1)) {
-      int lastBlockSize = messageParameters.stringLength - (messageParameters.totalBlocks -1)*messageParameters.blockSize;
-      Wire.requestFrom(I2C_SLAVE_ADDRESS, (uint8_t)lastBlockSize);
-    } else {
-      Wire.requestFrom(I2C_SLAVE_ADDRESS, (uint8_t)messageParameters.blockSize);
-    }
-    delay(5000);
-    while(Wire.available()) {
-      Serial.print((char)Wire.read());
-      delay(1000);
-    }
-  }
-  Serial.println();
-}
-
 void setup() {
   Serial.begin(9600);
   establishI2CConnectionTo(SDA, SCL);
+  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD);
+  mqttClient -> setupClient(&client, MQTT_BROKER, MQTT_PORT);
   Serial.println("setup finished");
 }
 
 void loop() {
   if (lockSlaveDevice()) {
-    fetchMessageParametersFromSlave();
-  
-    delay(10000);
-  }
+    SensorValues currentSensorValues = fetchSensorValuesFromSlave();
+    unlockSlaveDevice();
 
-  unlockSlaveDevice();
-  
-  delay(10000);
+    char result[8];
+    dtostrf(currentSensorValues.tempSensorValue, 6, 2, result);
+    mqttClient -> publishMessage("living_room/temperature", result);
+    dtostrf(currentSensorValues.humiditySensorValue, 6, 2, result);
+    mqttClient -> publishMessage("living_room/humidity", result);
+    dtostrf(currentSensorValues.lightSensorValue, 6, 2, result);
+    mqttClient -> publishMessage("living_room/light", result);
+  }
+  delay(200);
 }

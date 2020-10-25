@@ -1,8 +1,12 @@
 #include <Wire.h>
 #include <math.h>
 #include "ArduinoJson.h"
+#include "DHT.h"
 
 #define LIGHT_SENSOR_PIN A0
+
+#define DHTPIN 2
+#define DHTTYPE DHT11
 
 #define BLOCK_SIZE 32
 #define I2C_SLAVE_ADDRESS 0x26
@@ -15,87 +19,69 @@
 #define LOCK_PARAMETER 1
 #define LOCK_STATUS_PARAMETER 2
 
-#define MESSAGE_PARAMETERS_COMMAND 2
-#define MESSAGE_PARAMETERS_BLOCKSIZE 1
-#define MESSAGE_PARAMETERS_TOTAL_BLOCKS 2
-#define MESSAGE_PARAMETERS_STRING_LENGTH 3
-
+#define READ_SENSOR_VALUES_COMMAND 2
+#define LIGHT_SENSOR_VALUE_PARAMETER 0
+#define TEMP_SENSOR_VALUE_PARAMETER 1
+#define HUMIDITY_SENSOR_VALUE_PARAMETER 2
 
 volatile bool _readLock = false;
 volatile bool _lockSet = false;
-const uint8_t OUT_BUFFER_SIZE = 256;
 
-// *** Need volatile because we are updating this buffer outside the normal loop.
-volatile byte _outboundBuffer[OUT_BUFFER_SIZE];
+volatile int _lightSensorRawValue;
+volatile float _tempSensorValue;
+volatile float _humiditySensorValue;
 
-String _currentJsonMessage;
-uint8_t _totalBlocks = 0;
-uint8_t _stringLength = 0;
+byte _lastCommand = 0;
+byte _lastParameter = 0;
+
+DHT dht(DHTPIN, DHTTYPE);
 
 int readLightSensorAnalogValue() {
   int analogValue = analogRead(LIGHT_SENSOR_PIN);
   return analogValue;
 }
 
-void readLightSensorState(JsonArray sensorData) {
-  JsonObject lightSensorData = sensorData.createNestedObject();
-  lightSensorData["sensor"] = "lightSensor";
-  JsonObject sensorDataEntry = lightSensorData.createNestedObject("data");
-  
-  int lightSensorAnalogValue = readLightSensorAnalogValue();
-  sensorDataEntry["lightSensorRawValue"] = lightSensorAnalogValue;
-  if (lightSensorAnalogValue < 10) {
-    sensorDataEntry["lightSensorState"] = "Da";
-  } else if (lightSensorAnalogValue < 200) {
-    sensorDataEntry["lightSensorState"] = "Dim";
-  } else if (lightSensorAnalogValue < 500) {
-    sensorDataEntry["lightSensorState"] = "bright";
-  } else if (lightSensorAnalogValue < 800) {
-    sensorDataEntry["lightSensorState"] = "Light";
-  } else {
-    sensorDataEntry["lightSensorState"] = "Very bright";
+void readDHTValues() {
+  _humiditySensorValue = dht.readHumidity();
+  _tempSensorValue = dht.readTemperature(); 
+  if (isnan(_humiditySensorValue) || isnan(_tempSensorValue)) {       
+    Serial.println("Error reading dht!");
+    return;
   }
+  Serial.print("Humidity: ");
+  Serial.print(_humiditySensorValue);
+  Serial.print("%\t");              // Tabulator
+  Serial.print("Temperatur: ");
+  Serial.print(_tempSensorValue);
+  Serial.write('°');
+  Serial.println("C");
+}
+
+void readLightSensorState() {
+  _lightSensorRawValue = readLightSensorAnalogValue();
+  Serial.print("Current light sensor state: ");Serial.println(_lightSensorRawValue);
 }
 
 void setup() {
- Wire.begin(I2C_SLAVE_ADDRESS);                /* join i2c bus with address 8 */
- Wire.onReceive(receiveEvent); /* register receive event */
- Wire.onRequest(requestEvent); /* register request event */
- Serial.begin(9600);           /* start serial for debug */
-}
-
-int freeRam() {
-  extern int __heap_start, *__brkval;
-  int v;
-  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+  dht.begin();
+  Wire.begin(I2C_SLAVE_ADDRESS);
+  Wire.onReceive(receiveEvent);
+  Wire.onRequest(requestEvent);
+  Serial.begin(9600);
 }
 
 void loop() {
-  Serial.print("Free ram: ");
-  Serial.println(freeRam());
-  Serial.println(_readLock);
   if (!_readLock) {
     Serial.println("Begin reading sensor");
     _lockSet = false;
-    _currentJsonMessage = "";
-    DynamicJsonDocument doc(200);
-    JsonArray sensorData = doc.createNestedArray("sensorData");
-    readLightSensorState(sensorData);
-  
-    serializeJson(doc, _currentJsonMessage);
-    _stringLength = _currentJsonMessage.length();
-    _totalBlocks = (uint8_t)(ceil((float)_stringLength / (float)BLOCK_SIZE));
-    Serial.println(_stringLength);
-    Serial.println(_totalBlocks);
-    Serial.println(_currentJsonMessage);
+    readLightSensorState();
+    readDHTValues();
   } else {
+    Serial.println("Device locked");
     _lockSet = true;
   }
-  delay(2000);
+  delay(150);
 }
-
-byte _lastCommand = 0;
-byte _lastParameter = 0;
 
 // function that executes whenever data is received from master
 void receiveEvent(int byteCount) {
@@ -114,7 +100,6 @@ void receiveEvent(int byteCount) {
 }
 
 // request event functions
-
 byte lockUnlockDevice(byte parameter) {
   if (parameter == LOCK_PARAMETER) {
     Serial.println("Locking data.");
@@ -135,27 +120,30 @@ byte lockUnlockDevice(byte parameter) {
   return 9;
 }
 
+void sendFloatValueToMaster(float value) {
+  char valueBuffer[7];
+  dtostrf(value, 7, 2, valueBuffer);
+  Wire.write(valueBuffer, 7);
+}
 
 void requestEvent() {
   switch(_lastCommand) {
     case LOCK_UNLOCK_COMMAND:
       Wire.write(lockUnlockDevice(_lastParameter));
       break;
-    case MESSAGE_PARAMETERS_COMMAND:
-      if (_lastParameter == MESSAGE_PARAMETERS_BLOCKSIZE) {
-        Wire.write(BLOCK_SIZE);  
-      } else if (_lastParameter == MESSAGE_PARAMETERS_TOTAL_BLOCKS) {
-        Wire.write(_totalBlocks);
-      } else if (_lastParameter == MESSAGE_PARAMETERS_STRING_LENGTH) {
-        Wire.write(_stringLength);
+    case READ_SENSOR_VALUES_COMMAND:
+      if (_lastParameter == LIGHT_SENSOR_VALUE_PARAMETER) {
+        Wire.write(highByte(_lightSensorRawValue));  
+        Wire.write(lowByte(_lightSensorRawValue));  
+      } else if (_lastParameter == TEMP_SENSOR_VALUE_PARAMETER) {
+        sendFloatValueToMaster(_tempSensorValue);
+      } else if (_lastParameter == HUMIDITY_SENSOR_VALUE_PARAMETER) {
+        sendFloatValueToMaster(_humiditySensorValue);
+      } else {
+        Wire.write(0);
       }
-      
-      break;
-    case 3:
-      Wire.write(_totalBlocks);
       break;
     default:
       Wire.write(255); 
   }
- 
 }
