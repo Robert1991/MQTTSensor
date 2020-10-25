@@ -16,6 +16,8 @@
 #define MESSAGE_PARAMETERS_TOTAL_BLOCKS 2
 #define MESSAGE_PARAMETERS_STRING_LENGTH 3
 
+#define TRANSFER_JSON_MESSAGE_COMMAND 3
+
 #define SDA D1
 #define SCL D2
 
@@ -29,19 +31,30 @@ void refreshI2CConnection() {
   if (checkI2CConnection()) {
     Serial.println("connection to slave got lost. trying to reestablish connection...");
     establishI2CConnectionTo(SDA, SCL);
+  } else {
+    while(Wire.available()) {
+      Serial.println("flushing wire");
+    }
   }
 }
 
-byte fetchSingleByte(byte command, byte parameter, int delayTime = 500) {
+void sendI2CCommandWithParameter(byte command, byte parameter, int delayTime = 500) {
   refreshI2CConnection();
+  Serial.print("Sending I2C command {");Serial.print(command);Serial.print("} with parameter {");Serial.print(parameter);Serial.println("}");
   Wire.beginTransmission(I2C_SLAVE_ADDRESS); 
   Wire.write(command);
   Wire.write(parameter);
   Wire.endTransmission(); 
   delay(delayTime);
+}
+
+byte fetchSingleByte(byte command, byte parameter, int delayTime = 500) {
+  sendI2CCommandWithParameter(command, parameter, delayTime);
   Wire.requestFrom(I2C_SLAVE_ADDRESS, 1);
   if (Wire.available()) {
-    return Wire.read();
+    byte returnByte = Wire.read();
+    Serial.print("Received single byte from slave: ");Serial.println(returnByte);
+    return returnByte;
   }
   return 255;
 }
@@ -101,23 +114,22 @@ SensorMessageParameters fetchMessageParametersFromSlave() {
 }
 
 int fetchSensorDataFromSlave(SensorMessageParameters messageParameters) {
-  for(int currentBlock = 1; currentBlock <= messageParameters.totalBlocks; currentBlock++) {
-    refreshI2CConnection();
-    Wire.beginTransmission(I2C_SLAVE_ADDRESS); 
-    //Wire.write(command);
-    //Wire.write(parameter);
-    Wire.endTransmission(); 
+  for(int currentBlock = 0; currentBlock < messageParameters.totalBlocks; currentBlock++) {
+    sendI2CCommandWithParameter(TRANSFER_JSON_MESSAGE_COMMAND, currentBlock);
     
-    if (currentBlock == messageParameters.totalBlocks) {
-      
+    if (currentBlock == (messageParameters.totalBlocks -1)) {
+      int lastBlockSize = messageParameters.stringLength - (messageParameters.totalBlocks -1)*messageParameters.blockSize;
+      Wire.requestFrom(I2C_SLAVE_ADDRESS, (uint8_t)lastBlockSize);
     } else {
-      //delay(delayTime);
-      Wire.requestFrom(I2C_SLAVE_ADDRESS, 1);
-      if (Wire.available()) {
-        return Wire.read();
-      }
+      Wire.requestFrom(I2C_SLAVE_ADDRESS, (uint8_t)messageParameters.blockSize);
+    }
+    delay(5000);
+    while(Wire.available()) {
+      Serial.print((char)Wire.read());
+      delay(1000);
     }
   }
+  Serial.println();
 }
 
 void setup() {
