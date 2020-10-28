@@ -1,6 +1,6 @@
 #include "wireUtils.h"
 
-int clearI2CBus(int sdaPin, int sclPin) {
+int clearI2CBus(int sdaPin, int sclPin, bool startupDelay) {
 #if defined(TWCR) && defined(TWEN)
   TWCR &= ~(_BV(TWEN));  // Disable the Atmel 2-Wire interface so we can control the SDA and SCL pins directly
 #endif
@@ -8,12 +8,14 @@ int clearI2CBus(int sdaPin, int sclPin) {
   pinMode(sdaPin, INPUT_PULLUP);  // Make SDA (data) and SCL (clock) pins Inputs with pullup.
   pinMode(sclPin, INPUT_PULLUP);
 
-  delay(2500);  // Wait 2.5 secs. This is strictly only necessary on the first power
-  // up of the DS3231 module to allow it to initialize properly,
-  // but is also assists in reliable programming of FioV3 boards as it gives the
-  // IDE a chance to start uploaded the program
-  // before existing sketch confuses the IDE by sending Serial data.
-
+  if (startupDelay) {
+    delay(2500);  // Wait 2.5 secs. This is strictly only necessary on the first power
+    // up of the DS3231 module to allow it to initialize properly,
+    // but is also assists in reliable programming of FioV3 boards as it gives the
+    // IDE a chance to start uploaded the program
+    // before existing sketch confuses the IDE by sending Serial data.  
+  }
+  
   boolean sclPinIsLow = (digitalRead(sclPin) == LOW);  // Check is SCL is Low.
   if (sclPinIsLow) {                                   // If it is held low Arduno cannot become the I2C master.
     return 1;                                      // I2C bus error. Could not clear SCL clock line held low
@@ -78,8 +80,8 @@ bool checkI2CConnection() {
   return connectionWasLost;
 }
 
-void establishI2CConnectionTo(int sdaPort, int sclPort) {
-  int rtn = clearI2CBus(sdaPort, sclPort);
+void establishI2CConnectionTo(int sdaPort, int sclPort, bool startupDelay) {
+  int rtn = clearI2CBus(sdaPort, sclPort, startupDelay);
   if (rtn != 0) {
     Serial.println(F("I2C bus error. Could not clear"));
     if (rtn == 1) {

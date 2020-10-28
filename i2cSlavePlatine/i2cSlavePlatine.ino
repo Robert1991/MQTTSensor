@@ -1,12 +1,12 @@
 #include <Wire.h>
 #include <math.h>
-#include "ArduinoJson.h"
 #include "DHT.h"
 
 #define LIGHT_SENSOR_PIN A0
 
 #define DHTPIN 2
 #define DHTTYPE DHT11
+#define MOTION_SENSOR_PIN 4
 
 #define BLOCK_SIZE 32
 #define I2C_SLAVE_ADDRESS 0x26
@@ -23,11 +23,13 @@
 #define LIGHT_SENSOR_VALUE_PARAMETER 0
 #define TEMP_SENSOR_VALUE_PARAMETER 1
 #define HUMIDITY_SENSOR_VALUE_PARAMETER 2
+#define MOTION_SENSOR_VALUE_PARAMETER 3
 
 volatile bool _readLock = false;
 volatile bool _lockSet = false;
 
 volatile int _lightSensorRawValue;
+volatile bool _motionDetectedValue = false;
 volatile float _tempSensorValue;
 volatile float _humiditySensorValue;
 
@@ -42,15 +44,17 @@ int readLightSensorAnalogValue() {
 }
 
 void readDHTValues() {
-  _humiditySensorValue = dht.readHumidity();
-  _tempSensorValue = dht.readTemperature(); 
-  if (isnan(_humiditySensorValue) || isnan(_tempSensorValue)) {       
-    Serial.println("Error reading dht!");
-    return;
+  float currentHumiditySensorValue = dht.readHumidity();
+  float currentTempSensorValue = dht.readTemperature(); 
+  if (!isnan(currentHumiditySensorValue)) {       
+    _humiditySensorValue = currentHumiditySensorValue;
+  }
+  if (!isnan(currentTempSensorValue)) {       
+    _tempSensorValue = currentTempSensorValue;
   }
   Serial.print("Humidity: ");
   Serial.print(_humiditySensorValue);
-  Serial.print("%\t");              // Tabulator
+  Serial.print("%\t");
   Serial.print("Temperatur: ");
   Serial.print(_tempSensorValue);
   Serial.write('°');
@@ -62,7 +66,20 @@ void readLightSensorState() {
   Serial.print("Current light sensor state: ");Serial.println(_lightSensorRawValue);
 }
 
+void readMotionDetectorState() {
+  int state = digitalRead(MOTION_SENSOR_PIN); 
+  
+  if (state == HIGH) { 
+    Serial.println("Motion detected");
+    _motionDetectedValue = true;
+  } else {
+    Serial.println("No motion detected");
+    _motionDetectedValue = false;
+  }
+}
+
 void setup() {
+  pinMode(MOTION_SENSOR_PIN, INPUT); 
   dht.begin();
   Wire.begin(I2C_SLAVE_ADDRESS);
   Wire.onReceive(receiveEvent);
@@ -76,14 +93,14 @@ void loop() {
     _lockSet = false;
     readLightSensorState();
     readDHTValues();
+    readMotionDetectorState();
   } else {
     Serial.println("Device locked");
     _lockSet = true;
   }
-  delay(150);
+  delay(100);
 }
 
-// function that executes whenever data is received from master
 void receiveEvent(int byteCount) {
   if (byteCount == 2) {
     _lastCommand = Wire.read();
@@ -99,7 +116,6 @@ void receiveEvent(int byteCount) {
   }
 }
 
-// request event functions
 byte lockUnlockDevice(byte parameter) {
   if (parameter == LOCK_PARAMETER) {
     Serial.println("Locking data.");
@@ -139,6 +155,8 @@ void requestEvent() {
         sendFloatValueToMaster(_tempSensorValue);
       } else if (_lastParameter == HUMIDITY_SENSOR_VALUE_PARAMETER) {
         sendFloatValueToMaster(_humiditySensorValue);
+      } else if (_lastParameter == MOTION_SENSOR_VALUE_PARAMETER) {
+        Wire.write(_motionDetectedValue);  
       } else {
         Wire.write(0);
       }

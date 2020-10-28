@@ -17,14 +17,17 @@
 #define LIGHT_SENSOR_VALUE_PARAMETER 0
 #define TEMP_SENSOR_VALUE_PARAMETER 1
 #define HUMIDITY_SENSOR_VALUE_PARAMETER 2
+#define MOTION_SENSOR_VALUE_PARAMETER 3
 
 #define SDA D1
 #define SCL D2
+#define RELAIS_PIN D3
 
 struct SensorValues {
   int lightSensorValue;
   float tempSensorValue;
   float humiditySensorValue;
+  byte motionDetectedSensorValue;
 };
 
 WiFiClient espClient;
@@ -42,7 +45,7 @@ void refreshI2CConnection() {
   }
 }
 
-void sendI2CCommandWithParameter(byte command, byte parameter, int delayTime = 250) {
+void sendI2CCommandWithParameter(byte command, byte parameter, int delayTime = 100) {
   refreshI2CConnection();
   Serial.print("Sending I2C command {");Serial.print(command);Serial.print("} with parameter {");Serial.print(parameter);Serial.println("}");
   Wire.beginTransmission(I2C_SLAVE_ADDRESS); 
@@ -52,7 +55,7 @@ void sendI2CCommandWithParameter(byte command, byte parameter, int delayTime = 2
   delay(delayTime);
 }
 
-byte fetchSingleByte(byte command, byte parameter, int delayTime = 250) {
+byte fetchSingleByte(byte command, byte parameter, int delayTime = 100) {
   sendI2CCommandWithParameter(command, parameter, delayTime);
   Wire.requestFrom(I2C_SLAVE_ADDRESS, 1);
   if (Wire.available()) {
@@ -63,7 +66,7 @@ byte fetchSingleByte(byte command, byte parameter, int delayTime = 250) {
   return 255;
 }
 
-float fetchFloatFrom(byte command, byte parameter, int delayTime = 250) {
+float fetchFloatFrom(byte command, byte parameter, int delayTime = 100) {
   sendI2CCommandWithParameter(command, parameter, delayTime);
   String dataString = "";
   Wire.requestFrom(I2C_SLAVE_ADDRESS, 7);
@@ -74,7 +77,7 @@ float fetchFloatFrom(byte command, byte parameter, int delayTime = 250) {
   return dataString.toFloat();
 }
 
-int fetchIntegerFrom(byte command, byte parameter, int delayTime = 250) {
+int fetchIntegerFrom(byte command, byte parameter, int delayTime = 100) {
   sendI2CCommandWithParameter(command, parameter, delayTime);
   Wire.requestFrom(I2C_SLAVE_ADDRESS, 2);
   if (Wire.available()) {
@@ -85,13 +88,13 @@ int fetchIntegerFrom(byte command, byte parameter, int delayTime = 250) {
   return -1;
 }
 
-bool unlockLockDevice(bool lock, int delayTime = 250, int lockHoldDelay = 350, int confirmLockStatusTries = 5) {
+bool unlockLockDevice(bool lock, int delayTime = 150, int confirmLockStatusTries = 5) {
   if (lock) {
     Serial.println("Locking slave device");
     if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_PARAMETER, delayTime) == DEVICE_LOCKED) {
-      delay(lockHoldDelay);
+      Serial.println("retained lock command");
       for (int currentTry = 0; currentTry < confirmLockStatusTries; currentTry++) {
-        if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_STATUS_PARAMETER, 250) == LOCK_SET_STATUS) {
+        if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_STATUS_PARAMETER, delayTime) == LOCK_SET_STATUS) {
           Serial.println("Successfully locked slave device");
           return true;
         }
@@ -102,9 +105,8 @@ bool unlockLockDevice(bool lock, int delayTime = 250, int lockHoldDelay = 350, i
   } else {
     Serial.println("Unlocking slave device");
     if (fetchSingleByte(LOCK_UNLOCK_COMMAND, UNLOCK_PARAMETER) == DEVICE_UNLOCKED) {
-      delay(lockHoldDelay);
       for (int currentTry = 0; currentTry < confirmLockStatusTries; currentTry++) {
-        if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_STATUS_PARAMETER, 250) != LOCK_SET_STATUS) {
+        if (fetchSingleByte(LOCK_UNLOCK_COMMAND, LOCK_STATUS_PARAMETER, delayTime) != LOCK_SET_STATUS) {
           Serial.println("Successfully unlocked slave device");
           return true;
         }
@@ -117,17 +119,17 @@ bool unlockLockDevice(bool lock, int delayTime = 250, int lockHoldDelay = 350, i
 
 SensorValues fetchSensorValuesFromSlave() {
   int lightSensorValue = fetchIntegerFrom(READ_SENSOR_VALUES_COMMAND, LIGHT_SENSOR_VALUE_PARAMETER);
-  delay(50);
   float tempSensorValue = fetchFloatFrom(READ_SENSOR_VALUES_COMMAND, TEMP_SENSOR_VALUE_PARAMETER);
-  delay(50);
   float humiditySensorValue = fetchFloatFrom(READ_SENSOR_VALUES_COMMAND, HUMIDITY_SENSOR_VALUE_PARAMETER);
-  delay(50);
+  byte motionDetectedSensorValue = fetchSingleByte(READ_SENSOR_VALUES_COMMAND, MOTION_SENSOR_VALUE_PARAMETER);
   
   Serial.println("Received sensor values: ");
   Serial.print("  light sensor value: ");Serial.println(lightSensorValue);
   Serial.print("  temp sensor value: ");Serial.println(tempSensorValue);
   Serial.print("  humidity sensor value: ");Serial.println(humiditySensorValue);
-  SensorValues sensorValues = {lightSensorValue, tempSensorValue, humiditySensorValue};
+  Serial.print("  motion detector sensor value: ");Serial.println(motionDetectedSensorValue);
+  
+  SensorValues sensorValues = {lightSensorValue, tempSensorValue, humiditySensorValue, motionDetectedSensorValue};
   return sensorValues;
 }
 
@@ -140,8 +142,9 @@ bool unlockSlaveDevice() {
 }
 
 void setup() {
+  pinMode(RELAIS_PIN , OUTPUT);
   Serial.begin(9600);
-  establishI2CConnectionTo(SDA, SCL);
+  establishI2CConnectionTo(SDA, SCL, true);
   setupWifiConnection(WIFI_SSID, WIFI_PASSWORD);
   mqttClient -> setupClient(&client, MQTT_BROKER, MQTT_PORT);
   Serial.println("setup finished");
@@ -159,6 +162,14 @@ void loop() {
     mqttClient -> publishMessage("living_room/humidity", result);
     dtostrf(currentSensorValues.lightSensorValue, 6, 2, result);
     mqttClient -> publishMessage("living_room/light", result);
+    char byteResult[1];
+    snprintf(byteResult, 1, "%d",(int)currentSensorValues.motionDetectedSensorValue);
+
+    if (currentSensorValues.motionDetectedSensorValue == 1) {
+      mqttClient -> publishMessage("living_room/motion", "on");  
+    } else {
+      mqttClient -> publishMessage("living_room/motion", "off");  
+    }
   }
-  delay(200);
+  delay(300);
 }
