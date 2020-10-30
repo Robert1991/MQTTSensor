@@ -21,7 +21,6 @@
 
 #define SDA D1
 #define SCL D2
-#define RELAIS_PIN D3
 
 struct SensorValues {
   int lightSensorValue;
@@ -39,7 +38,7 @@ void refreshI2CConnection() {
     Serial.println("connection to slave got lost. trying to reestablish connection...");
     establishI2CConnectionTo(SDA, SCL);
   } else {
-    while(Wire.available()) {
+    while (Wire.available()) {
       Serial.println("flushing wire");
     }
   }
@@ -47,11 +46,11 @@ void refreshI2CConnection() {
 
 void sendI2CCommandWithParameter(byte command, byte parameter, int delayTime = 100) {
   refreshI2CConnection();
-  Serial.print("Sending I2C command {");Serial.print(command);Serial.print("} with parameter {");Serial.print(parameter);Serial.println("}");
-  Wire.beginTransmission(I2C_SLAVE_ADDRESS); 
+  Serial.print("Sending I2C command {"); Serial.print(command); Serial.print("} with parameter {"); Serial.print(parameter); Serial.println("}");
+  Wire.beginTransmission(I2C_SLAVE_ADDRESS);
   Wire.write(command);
   Wire.write(parameter);
-  Wire.endTransmission(); 
+  Wire.endTransmission();
   delay(delayTime);
 }
 
@@ -60,7 +59,7 @@ byte fetchSingleByte(byte command, byte parameter, int delayTime = 100) {
   Wire.requestFrom(I2C_SLAVE_ADDRESS, 1);
   if (Wire.available()) {
     byte returnByte = Wire.read();
-    Serial.print("Received single byte from slave: ");Serial.println(returnByte);
+    Serial.print("Received single byte from slave: "); Serial.println(returnByte);
     return returnByte;
   }
   return 255;
@@ -99,7 +98,7 @@ bool unlockLockDevice(bool lock, int delayTime = 150, int confirmLockStatusTries
           return true;
         }
       }
-      
+
       return false;
     }
   } else {
@@ -122,13 +121,13 @@ SensorValues fetchSensorValuesFromSlave() {
   float tempSensorValue = fetchFloatFrom(READ_SENSOR_VALUES_COMMAND, TEMP_SENSOR_VALUE_PARAMETER);
   float humiditySensorValue = fetchFloatFrom(READ_SENSOR_VALUES_COMMAND, HUMIDITY_SENSOR_VALUE_PARAMETER);
   byte motionDetectedSensorValue = fetchSingleByte(READ_SENSOR_VALUES_COMMAND, MOTION_SENSOR_VALUE_PARAMETER);
-  
+
   Serial.println("Received sensor values: ");
-  Serial.print("  light sensor value: ");Serial.println(lightSensorValue);
-  Serial.print("  temp sensor value: ");Serial.println(tempSensorValue);
-  Serial.print("  humidity sensor value: ");Serial.println(humiditySensorValue);
-  Serial.print("  motion detector sensor value: ");Serial.println(motionDetectedSensorValue);
-  
+  Serial.print("  light sensor value: "); Serial.println(lightSensorValue);
+  Serial.print("  temp sensor value: "); Serial.println(tempSensorValue);
+  Serial.print("  humidity sensor value: "); Serial.println(humiditySensorValue);
+  Serial.print("  motion detector sensor value: "); Serial.println(motionDetectedSensorValue);
+
   SensorValues sensorValues = {lightSensorValue, tempSensorValue, humiditySensorValue, motionDetectedSensorValue};
   return sensorValues;
 }
@@ -142,7 +141,6 @@ bool unlockSlaveDevice() {
 }
 
 void setup() {
-  pinMode(RELAIS_PIN , OUTPUT);
   Serial.begin(9600);
   establishI2CConnectionTo(SDA, SCL, true);
   setupWifiConnection(WIFI_SSID, WIFI_PASSWORD);
@@ -154,7 +152,7 @@ void loop() {
   if (lockSlaveDevice()) {
     SensorValues currentSensorValues = fetchSensorValuesFromSlave();
     unlockSlaveDevice();
-
+    
     char result[8];
     dtostrf(currentSensorValues.tempSensorValue, 6, 2, result);
     mqttClient -> publishMessage("living_room/temperature", result);
@@ -163,12 +161,12 @@ void loop() {
     dtostrf(currentSensorValues.lightSensorValue, 6, 2, result);
     mqttClient -> publishMessage("living_room/light", result);
     char byteResult[1];
-    snprintf(byteResult, 1, "%d",(int)currentSensorValues.motionDetectedSensorValue);
+    snprintf(byteResult, 1, "%d", (int)currentSensorValues.motionDetectedSensorValue);
 
     if (currentSensorValues.motionDetectedSensorValue == 1) {
-      mqttClient -> publishMessage("living_room/motion", "on");  
+      mqttClient -> publishMessage("living_room/motion", "on");
     } else {
-      mqttClient -> publishMessage("living_room/motion", "off");  
+      mqttClient -> publishMessage("living_room/motion", "off");
     }
   }
   delay(300);
