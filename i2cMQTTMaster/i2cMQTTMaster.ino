@@ -1,5 +1,3 @@
-#include <Wire.h>
-#include "wireUtils.h"
 #include "credentials.h"
 #include "IOTClients.h"
 
