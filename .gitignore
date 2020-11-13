@@ -1,3 +1,4 @@
 i2cMQTTMaster/credentials.h
 MQTTActorPlatine/credentials.h
 MQTTLivingRoomClosetPlatine/credentials.h
+MQTTBalconyActor/credentials.h
