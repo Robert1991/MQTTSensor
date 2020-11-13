@@ -27,30 +27,34 @@ MQTTRgbLight* rgbLedStrip = new MQTTRgbLight(stripConfig);
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-DHT dht(DHT_PIN, DHTTYPE);
 MQTTClient* mqttClient = new MQTTClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
 
 MQTTMotionSensor* motionSensor = new MQTTMotionSensor(mqttClient, MOTION_SENSOR_STATE_TOPIC, MOTION_SENSOR_PIN);
+DHT dht(DHT_PIN, DHTTYPE);
 MQTTDhtSensor* dhtSensor = new MQTTDhtSensor(mqttClient, &dht, TEMPERATURE_STATE_TOPIC, HUMIDITY_STATE_TOPIC);
 
 void setup() {
   Serial.begin(9600);
   motionSensor -> setupSensor();
   dhtSensor -> setupSensor();
-  
-  mqttClient -> setVerbose(true);  
-  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD);
   rgbLedStrip -> setupActor(mqttClient);
   
+  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD);
+  mqttClient -> setVerbose(true);  
   mqttClient -> setupClient(&client, MQTT_BROKER, MQTT_PORT);
   client.setCallback(callback);
 }
 
 void loop() {
-  motionSensor -> publishMeasurement();
-  dhtSensor -> publishMeasurement();
-  mqttClient -> loopClient();
-  rgbLedStrip -> applyChoosenColorToLeds();
+  checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
+  if (mqttClient -> loopClient()) {
+    motionSensor -> publishMeasurement();
+    dhtSensor -> publishMeasurement();
+  } else {
+    dhtSensor -> reset();
+    motionSensor -> reset();
+  }
+  
   delay(200);
 }
 
