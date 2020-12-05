@@ -8,70 +8,47 @@
 #define RELAIS_PIN_1 D1
 #define RELAIS_PIN_2 D2
 
-char HUMIDITY_STATE_TOPIC[] = "balcony/humidity";
-char TEMPERATURE_STATE_TOPIC[] = "balcony/temperature";
-
-char RELAIS_LIGHT_SWITCH_SUBSCRIPTION_TOPIC_1[] = "balcony/relais_light_1/switch";
-char RELAIS_LIGHT_SWITCH_STATE_TOPIC_1[] = "balcony/relais_light_1/status";
-
-char RELAIS_LIGHT_SWITCH_SUBSCRIPTION_TOPIC_2[] = "balcony/relais_light_2/switch";
-char RELAIS_LIGHT_SWITCH_STATE_TOPIC_2[] = "balcony/relais_light_2/status";
-
-
-MQTTSwitchConfiguration RELAIS_SWITCH_CONFIGURATION_1 = {RELAIS_LIGHT_SWITCH_SUBSCRIPTION_TOPIC_1, RELAIS_LIGHT_SWITCH_STATE_TOPIC_1, RELAIS_PIN_1};
-MQTTSwitch* relaisSwitch_1 = new MQTTSwitch(RELAIS_SWITCH_CONFIGURATION_1);
-
-MQTTSwitchConfiguration RELAIS_SWITCH_CONFIGURATION_2 = {RELAIS_LIGHT_SWITCH_SUBSCRIPTION_TOPIC_2, RELAIS_LIGHT_SWITCH_STATE_TOPIC_2, RELAIS_PIN_2};
-MQTTSwitch* relaisSwitch_2 = new MQTTSwitch(RELAIS_SWITCH_CONFIGURATION_2);
-
 WiFiClient espClient;
-PubSubClient client(espClient);
-MQTTClient* mqttClient = new MQTTClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
+MQTTClient client(750);
+MessageQueueClient* mqttClient = new MessageQueueClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
+
+MQTTDeviceInfo deviceInfo = {"NStlwd" ,"balcony_sensor_actor_1", "homeassistant", "Node MCU", "RoboTronix"};
+MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo, "wJvJZH", 30000);
 
 DHT dht(DHT_PIN, DHTTYPE);
-MQTTDhtSensor* dhtSensor = new MQTTDhtSensor(mqttClient, &dht, TEMPERATURE_STATE_TOPIC, HUMIDITY_STATE_TOPIC);
+MQTTHumiditySensor* humiditySensor = new MQTTHumiditySensor(deviceInfo, &dht, "7CTb5m");
+MQTTTemperatureSensor* temperatureSensor = new MQTTTemperatureSensor(deviceInfo, &dht, "8FiVDk");
+
+MQTTSwitch* relaisLight1 = new MQTTSwitch(deviceInfo, "OqxzUZ", RELAIS_PIN_1, "relais_light_1");
+MQTTSwitch* relaisLight2 = new MQTTSwitch(deviceInfo, "k9L2sA", RELAIS_PIN_2, "relais_light_2");
+
+MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 5, 2);
 
 void setup() {
-  Serial.begin(9600);
-  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD);
-
-  relaisSwitch_1 -> setupActor(mqttClient);
-  relaisSwitch_1 -> setVerbose(true);
-
-  relaisSwitch_2 -> setupActor(mqttClient);
-  relaisSwitch_2 -> setVerbose(true);
-
-  dhtSensor -> setupSensor();
+  //Serial.begin(9600);
+  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD); 
   
-  mqttClient -> setVerbose(true);
-  mqttClient -> setupClient(&client, MQTT_BROKER, MQTT_PORT);
-  client.setCallback(callback);
+  client.begin(MQTT_BROKER, MQTT_PORT, espClient);
+  client.onMessage(messageReceived);
+
+  mqttClient -> setupClient(&client);
+  //mqttClient -> setVerbose(true);
+
+  mqttDeviceService -> addPublisher(devicePing);
+  mqttDeviceService -> addPublisher(humiditySensor);
+  mqttDeviceService -> addPublisher(temperatureSensor);
+  mqttDeviceService -> addStateConsumer(relaisLight1);
+  mqttDeviceService -> addStateConsumer(relaisLight2);
+  mqttDeviceService -> setupMQTTDevices();
 }
 
 void loop() {
   checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
- if (mqttClient -> loopClient()) {
-    dhtSensor -> publishMeasurement();
-    relaisSwitch_1 -> applySwitchStatus();
-    relaisSwitch_2 -> applySwitchStatus();
-  } else {
-    dhtSensor -> reset();
-  }
-  delay(150);
+  mqttDeviceService -> executeLoop();
+  delay(100);
 }
 
-void callback(char* topic, byte* message, unsigned int length) {
-  Serial.print("Message arrived on topic: ");
-  Serial.print(topic);
-  Serial.print(". Message: ");
-  String messageTemp;
-  String topicTemp(topic);
-  
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)message[i]);
-    messageTemp += (char)message[i];
-  }
-  Serial.println();
-  relaisSwitch_1 -> consumeMessage(mqttClient, topicTemp, messageTemp);
-  relaisSwitch_2 -> consumeMessage(mqttClient, topicTemp, messageTemp);
+void messageReceived(String &topic, String &payload) {
+  Serial.println("incoming: " + topic + " - " + payload);
+  mqttDeviceService -> handleMessage(topic, payload);
 }
