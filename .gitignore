@@ -3,3 +3,5 @@ MQTTActorPlatine/credentials.h
 MQTTLivingRoomClosetPlatine/credentials.h
 MQTTBalconyActor/credentials.h
 MQTTFloorSensorActorPlatine/credentials.h
+MQTTBedroomSensor/credentials.h
+MQTTKitchenCeilingLight/credentials.h
