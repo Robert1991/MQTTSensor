@@ -4,7 +4,7 @@
 
 #define RELAIS_PIN D1
 #define LED_STRIP_RED_PIN D5
-#define LED_STRIP_GREEN_PIN D1
+#define LED_STRIP_GREEN_PIN D2
 #define LED_STRIP_BLUE_PIN D6
 
 char RELAIS_LIGHT_SWITCH_SUBSCRIPTION_TOPIC[] = "kitchen/relais_light/set";
