@@ -1,5 +1,7 @@
 #include "credentials.h"
 #include "IOTClients.h"
+#include <wireUtils.h>
+#include <MQTTDevices.h>
 
 #define I2C_SLAVE_ADDRESS 0x26
 
@@ -13,26 +15,38 @@
 
 #define READ_SENSOR_VALUES_COMMAND 2
 #define LIGHT_SENSOR_VALUE_PARAMETER 0
-#define TEMP_SENSOR_VALUE_PARAMETER 1
-#define HUMIDITY_SENSOR_VALUE_PARAMETER 2
-#define MOTION_SENSOR_VALUE_PARAMETER 3
+
+#define DHT_PIN D3
+#define DHTTYPE DHT11
+#define MOTION_SENSOR_PIN D4
 
 #define SDA D1
 #define SCL D2
 
-struct SensorValues {
-  int lightSensorValue;
-  float tempSensorValue;
-  float humiditySensorValue;
-  byte motionDetectedSensorValue;
-};
+char HUMIDITY_STATE_TOPIC[] = "kitchen/humidity";
+char TEMPERATURE_STATE_TOPIC[] = "kitchen/temperature";
+char MOTION_SENSOR_STATE_TOPIC[] = "kitchen/motion";
+char LIGHT_INTENSITY_STATE_TOPIC[] = "kitchen/outside_light_intensity";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 MQTTClient* mqttClient = new MQTTClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
 
+MQTTMotionSensor* motionSensor = new MQTTMotionSensor(mqttClient, MOTION_SENSOR_STATE_TOPIC, MOTION_SENSOR_PIN);
+DHT dht(DHT_PIN, DHTTYPE);
+MQTTDhtSensor* dhtSensor = new MQTTDhtSensor(mqttClient, &dht, TEMPERATURE_STATE_TOPIC, HUMIDITY_STATE_TOPIC);
+
+int lastLightSensorValue = -1;
+
+bool areEqual(float value1, float value2, float minDifference = 0.001) {
+  if (abs(value1 - value2) > minDifference) {
+    return false;
+  }
+  return true;
+}
+
 void refreshI2CConnection() {
-  if (checkI2CConnection()) {
+  if (checkI2CConnection(SDA, SCL)) {
     Serial.println("connection to slave got lost. trying to reestablish connection...");
     establishI2CConnectionTo(SDA, SCL);
   } else {
@@ -114,20 +128,11 @@ bool unlockLockDevice(bool lock, int delayTime = 150, int confirmLockStatusTries
   return false;
 }
 
-SensorValues fetchSensorValuesFromSlave() {
+int fetchSensorValuesFromSlave() {
   int lightSensorValue = fetchIntegerFrom(READ_SENSOR_VALUES_COMMAND, LIGHT_SENSOR_VALUE_PARAMETER);
-  float tempSensorValue = fetchFloatFrom(READ_SENSOR_VALUES_COMMAND, TEMP_SENSOR_VALUE_PARAMETER);
-  float humiditySensorValue = fetchFloatFrom(READ_SENSOR_VALUES_COMMAND, HUMIDITY_SENSOR_VALUE_PARAMETER);
-  byte motionDetectedSensorValue = fetchSingleByte(READ_SENSOR_VALUES_COMMAND, MOTION_SENSOR_VALUE_PARAMETER);
-
   Serial.println("Received sensor values: ");
   Serial.print("  light sensor value: "); Serial.println(lightSensorValue);
-  Serial.print("  temp sensor value: "); Serial.println(tempSensorValue);
-  Serial.print("  humidity sensor value: "); Serial.println(humiditySensorValue);
-  Serial.print("  motion detector sensor value: "); Serial.println(motionDetectedSensorValue);
-
-  SensorValues sensorValues = {lightSensorValue, tempSensorValue, humiditySensorValue, motionDetectedSensorValue};
-  return sensorValues;
+  return lightSensorValue;
 }
 
 bool lockSlaveDevice() {
@@ -142,30 +147,43 @@ void setup() {
   Serial.begin(9600);
   establishI2CConnectionTo(SDA, SCL, true);
   setupWifiConnection(WIFI_SSID, WIFI_PASSWORD);
+
+  motionSensor -> setupSensor();
+  dhtSensor -> setupSensor();
+  
   mqttClient -> setupClient(&client, MQTT_BROKER, MQTT_PORT);
   Serial.println("setup finished");
+
+  StaticJsonDocument<200> doc;
+  doc["state_topic"] = "bedroom/motion";
+  doc["payload_on"] = "on";
+  doc["payload_off"] = "off";
+  doc["name"] = "Bedroom Motion Detector Auto Discovery";
+
+  char[256] message;
+  serializeJson(doc, message);
+  mqttClient -> publishMessage("", message);
 }
 
 void loop() {
-  if (lockSlaveDevice()) {
-    SensorValues currentSensorValues = fetchSensorValuesFromSlave();
-    unlockSlaveDevice();
+  checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
+  if (mqttClient -> loopClient()) {
+    motionSensor -> publishMeasurement();
+    dhtSensor -> publishMeasurement();
+  } else {
+    dhtSensor -> reset();
+    motionSensor -> reset();
+  }
     
+  if (lockSlaveDevice()) {
+    int currentlightSensorValue = fetchSensorValuesFromSlave();
+    unlockSlaveDevice();
     char result[8];
-    dtostrf(currentSensorValues.tempSensorValue, 6, 2, result);
-    mqttClient -> publishMessage("living_room/temperature", result);
-    dtostrf(currentSensorValues.humiditySensorValue, 6, 2, result);
-    mqttClient -> publishMessage("living_room/humidity", result);
-    dtostrf(currentSensorValues.lightSensorValue, 6, 2, result);
-    mqttClient -> publishMessage("living_room/light", result);
-    char byteResult[1];
-    snprintf(byteResult, 1, "%d", (int)currentSensorValues.motionDetectedSensorValue);
-
-    if (currentSensorValues.motionDetectedSensorValue == 1) {
-      mqttClient -> publishMessage("living_room/motion", "on");
-    } else {
-      mqttClient -> publishMessage("living_room/motion", "off");
+    if (lastLightSensorValue != currentlightSensorValue) {
+      dtostrf(lastLightSensorValue, 6, 2, result);
+      mqttClient -> publishMessage(LIGHT_INTENSITY_STATE_TOPIC, result);
+      lastLightSensorValue = currentlightSensorValue;
     }
   }
-  delay(300);
+  delay(50);
 }
