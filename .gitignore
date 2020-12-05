@@ -5,3 +5,4 @@ MQTTBalconyActor/credentials.h
 MQTTFloorSensorActorPlatine/credentials.h
 MQTTBedroomSensor/credentials.h
 MQTTKitchenCeilingLight/credentials.h
+MQTTFormerIkeaSolarLights/credentials.h
