@@ -6,62 +6,58 @@
 #define LED_STRIP_RED_PIN D5
 #define LED_STRIP_GREEN_PIN D2
 #define LED_STRIP_BLUE_PIN D6
-
-char RELAIS_LIGHT_SWITCH_SUBSCRIPTION_TOPIC[] = "kitchen/relais_light/set";
-char RELAIS_LIGHT_SWITCH_STATE_TOPIC[] = "kitchen/relais_light/status";
-
-MQTTSwitchConfiguration RELAIS_SWITCH_CONFIGURATION = {RELAIS_LIGHT_SWITCH_SUBSCRIPTION_TOPIC, RELAIS_LIGHT_SWITCH_STATE_TOPIC, RELAIS_PIN};
-MQTTSwitch* relaisSwitch = new MQTTSwitch(RELAIS_SWITCH_CONFIGURATION);
-
-char RGB_LIGHT_STATE_TOPIC[] = "kitchen/light1/status";
-char RGB_LIGHT_SWITCH_SUBSCRIPTION[] = "kitchen/light1/switch";
-char RGB_LIGHT_BRIGHTNESS_SUBSCRIPTION[] = "kitchen/light1/brightness/set";
-char RGB_LIGHT_COLOR_SET_SUBSCRIPTION[] = "kitchen/light1/color/set";
-char RGB_LIGHT_COLOR_SET_STATE_TOPIC[] = "kitchen/light1/color/status";
-char RGB_LIGHT_BRIGHTNESS_STATE_TOPIC[] = "kitchen/light1/brightness/status";
-
-RGBPins stripPins = {LED_STRIP_RED_PIN, LED_STRIP_GREEN_PIN, LED_STRIP_BLUE_PIN};
-MQTTRgbLightConfiguration stripConfig = {stripPins, RGB_LIGHT_STATE_TOPIC, RGB_LIGHT_SWITCH_SUBSCRIPTION, RGB_LIGHT_BRIGHTNESS_SUBSCRIPTION, RGB_LIGHT_BRIGHTNESS_STATE_TOPIC,
-  RGB_LIGHT_COLOR_SET_SUBSCRIPTION, RGB_LIGHT_COLOR_SET_STATE_TOPIC};
-MQTTRgbLight* rgbLedStrip = new MQTTRgbLight(stripConfig);
+//#define DOOR_SENSOR_PIN D1
 
 WiFiClient espClient;
-PubSubClient client(espClient);
-MQTTClient* mqttClient = new MQTTClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
+MQTTClient client(750);
+MessageQueueClient* mqttClient = new MessageQueueClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
+
+MQTTDeviceInfo deviceInfo = {"yUonzt" ,"kitchen_actor_1", "homeassistant", "Node MCU", "RoboTronix"};
+MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo,"wIJTeY", 30000);
+MQTTDeviceResetSwitch* resetSwitch = new MQTTDeviceResetSwitch(deviceInfo, "DqBPnU");  
+
+MQTTSwitch* relaisLight = new MQTTSwitch(deviceInfo, "7fZczI", RELAIS_PIN);
+
+RGBPins stripPins = {LED_STRIP_RED_PIN, LED_STRIP_GREEN_PIN, LED_STRIP_BLUE_PIN};
+MQTTRgbLight* rgbLight = new MQTTRgbLight(deviceInfo, "5n8s0e", stripPins);
+
+MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 4, 3);
 
 void setup() {
-  Serial.begin(9600);
-  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD);
-
-  relaisSwitch -> setupActor(mqttClient);
-  rgbLedStrip -> setupActor(mqttClient);
+  //Serial.begin(9600);
+  //pinMode(DOOR_SENSOR_PIN, INPUT_PULLUP);
   
-  mqttClient -> setupClient(&client, MQTT_BROKER, MQTT_PORT);
-  client.setCallback(callback);
+  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD); 
+  client.begin(MQTT_BROKER, MQTT_PORT, espClient);
+  client.onMessage(messageReceived);
+  
+  //mqttClient -> setVerbose(true);
+  mqttClient -> setupClient(&client);
 
-  rgbLedStrip ->executeDefaultAction(mqttClient);
+  mqttDeviceService -> setResetStateConsumer(resetSwitch);
+  
+  mqttDeviceService -> addPublisher(devicePing);
+  mqttDeviceService -> addStateConsumer(relaisLight);
+  mqttDeviceService -> addStateConsumer(rgbLight);
+  
+  mqttDeviceService -> setupMQTTDevices();
 }
 
 void loop() {
   checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
-  mqttClient -> loopClient();
+  mqttDeviceService -> executeLoop();
+  
+  //int doorState = digitalRead(DOOR_SENSOR_PIN);
+  //if(doorState == HIGH) {
+//    Serial.println("Open");
+//  } else {
+    //Serial.println("Closed");
+//  }
+
   delay(50);
-  relaisSwitch -> applySwitchStatus();
-  rgbLedStrip -> applyChoosenColorToLeds();
 }
 
-void callback(char* topic, byte* message, unsigned int length) {
-  Serial.print("Message arrived on topic: ");
-  Serial.print(topic);
-  Serial.print(". Message: ");
-  String messageTemp;
-  String topicTemp(topic);
-  
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)message[i]);
-    messageTemp += (char)message[i];
-  }
-  Serial.println();
-  relaisSwitch -> consumeMessage(mqttClient, topicTemp, messageTemp);
-  rgbLedStrip -> consumeMessage(mqttClient, topicTemp, messageTemp);
+void messageReceived(String &topic, String &payload) {
+  Serial.println("incoming: " + topic + " - " + payload);
+  mqttDeviceService -> handleMessage(topic, payload);
 }
