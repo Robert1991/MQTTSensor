@@ -9,11 +9,12 @@ MQTTClient client(750);
 MessageQueueClient* mqttClient = new MessageQueueClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
 
 MQTTDeviceInfo deviceInfo = {"XT9Ohl" ,"former_ikea_light", "homeassistant", "Node MCU", "RoboTronix"};
-MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo,"sjLB6Q", 30000);
+MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo,"UzBJqg", 30000);
+MQTTDeviceResetSwitch* resetSwitch = new MQTTDeviceResetSwitch(deviceInfo, "k6lnfO");
 MQTTSwitch* transistorLight = new MQTTSwitch(deviceInfo, "ODQ7Jt", D3);
 MQTTPhotoLightSensor* photoSensor = new MQTTPhotoLightSensor(deviceInfo,"zMvxqy", PHOTO_SENSOR_PIN);
 
-MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 3, 1);
+MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 4, 2);
 
 void setup() {
   //Serial.begin(9600);
@@ -24,7 +25,7 @@ void setup() {
 
   mqttClient -> setupClient(&client);
   //mqttClient -> setVerbose(true);
-
+  mqttDeviceService -> setResetStateConsumer(resetSwitch);
   mqttDeviceService -> addPublisher(photoSensor);
   mqttDeviceService -> addPublisher(devicePing);
   mqttDeviceService -> addStateConsumer(transistorLight);

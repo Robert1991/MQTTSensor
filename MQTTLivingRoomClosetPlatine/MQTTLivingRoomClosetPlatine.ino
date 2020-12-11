@@ -17,6 +17,8 @@ MessageQueueClient* mqttClient = new MessageQueueClient(MQTT_CLIENT_NAME, MQTT_U
 
 MQTTDeviceInfo deviceInfo = {"9EgmS4" ,"living_room_sensor_actor_1", "homeassistant", "Node MCU", "RoboTronix"};
 MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo, "lnwoRM", 30000);
+MQTTDeviceResetSwitch* resetSwitch = new MQTTDeviceResetSwitch(deviceInfo, "JMhc8L");
+
 MQTTMotionSensor* motionSensor = new MQTTMotionSensor(deviceInfo, "VM5ts3", MOTION_SENSOR_PIN, 15, 20, 9);
 
 DHT dht(DHT_PIN, DHTTYPE);
@@ -26,7 +28,7 @@ MQTTTemperatureSensor* temperatureSensor = new MQTTTemperatureSensor(deviceInfo,
 RGBPins stripPins = {LED_STRIP_RED_PIN, LED_STRIP_GREEN_PIN, LED_STRIP_BLUE_PIN};
 MQTTRgbLight* rgbLight = new MQTTRgbLight(deviceInfo, "L3Pc5A", stripPins);
 
-MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 5, 1);
+MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 6, 2);
 
 void setup() {
   //Serial.begin(9600);
@@ -37,7 +39,8 @@ void setup() {
   
   //mqttClient -> setVerbose(true);
   mqttClient -> setupClient(&client);
-  
+
+  mqttDeviceService -> setResetStateConsumer(resetSwitch);
   mqttDeviceService -> addPublisher(devicePing);
   mqttDeviceService -> addPublisher(motionSensor);
   mqttDeviceService -> addPublisher(humiditySensor);
