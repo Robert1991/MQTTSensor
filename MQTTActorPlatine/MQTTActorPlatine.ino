@@ -6,7 +6,6 @@
 #define LED_STRIP_RED_PIN D5
 #define LED_STRIP_GREEN_PIN D2
 #define LED_STRIP_BLUE_PIN D6
-//#define DOOR_SENSOR_PIN D1
 
 WiFiClient espClient;
 MQTTClient client(750);
@@ -25,13 +24,12 @@ MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 4, 3);
 
 void setup() {
   //Serial.begin(9600);
-  //pinMode(DOOR_SENSOR_PIN, INPUT_PULLUP);
-  
   setupWifiConnection(WIFI_SSID, WIFI_PASSWORD); 
   client.begin(MQTT_BROKER, MQTT_PORT, espClient);
   client.onMessage(messageReceived);
   
   //mqttClient -> setVerbose(true);
+  
   mqttClient -> setupClient(&client);
 
   mqttDeviceService -> setResetStateConsumer(resetSwitch);
@@ -46,14 +44,6 @@ void setup() {
 void loop() {
   checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
   mqttDeviceService -> executeLoop();
-  
-  //int doorState = digitalRead(DOOR_SENSOR_PIN);
-  //if(doorState == HIGH) {
-//    Serial.println("Open");
-//  } else {
-    //Serial.println("Closed");
-//  }
-
   delay(50);
 }
 
