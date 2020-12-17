@@ -1,8 +1,1 @@
-i2cMQTTMaster/credentials.h
-MQTTActorPlatine/credentials.h
-MQTTLivingRoomClosetPlatine/credentials.h
-MQTTBalconyActor/credentials.h
-MQTTFloorSensorActorPlatine/credentials.h
-MQTTBedroomSensor/credentials.h
-MQTTKitchenCeilingLight/credentials.h
-MQTTFormerIkeaSolarLights/credentials.h
+*credentials.h
