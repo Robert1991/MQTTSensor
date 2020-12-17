@@ -3,7 +3,7 @@
 #include "credentials.h"
 
 #define DHT_PIN D3
-#define DHTTYPE DHT11
+#define DHTTYPE DHT22
 
 #define RELAIS_PIN_1 D1
 #define RELAIS_PIN_2 D2

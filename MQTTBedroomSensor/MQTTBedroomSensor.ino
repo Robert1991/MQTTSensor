@@ -4,7 +4,7 @@
 
 
 #define DHT_PIN D4
-#define DHTTYPE DHT11
+#define DHTTYPE DHT22
 #define PHOTO_SENSOR_PIN A0
 #define MOTION_SENSOR_PIN D3
 #define DOOR_SENSOR_PIN D2
