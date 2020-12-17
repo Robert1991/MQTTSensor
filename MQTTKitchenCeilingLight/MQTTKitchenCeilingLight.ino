@@ -4,44 +4,41 @@
 
 #define RELAIS_PIN 0
 
-char RELAIS_LIGHT_SWITCH_SUBSCRIPTION_TOPIC[] = "kitchen/ceiling_light/set";
-char RELAIS_LIGHT_SWITCH_STATE_TOPIC[] = "kitchen/ceiling_light/status";
-
-MQTTSwitchConfiguration RELAIS_SWITCH_CONFIGURATION = {RELAIS_LIGHT_SWITCH_SUBSCRIPTION_TOPIC, RELAIS_LIGHT_SWITCH_STATE_TOPIC, RELAIS_PIN};
-MQTTSwitch* relaisSwitch = new MQTTSwitch(RELAIS_SWITCH_CONFIGURATION);
-
 WiFiClient espClient;
-PubSubClient client(espClient);
-MQTTClient* mqttClient = new MQTTClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
+MQTTClient client(750);
+MessageQueueClient* mqttClient = new MessageQueueClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
+
+MQTTDeviceInfo deviceInfo = {"JNDHbc" ,"kitchen_ceiling_light_1", "homeassistant", "ESP-01S", "RoboTronix"};
+MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo, "Fz3npn", 30000);
+MQTTDeviceResetSwitch* resetSwitch = new MQTTDeviceResetSwitch(deviceInfo, "DvnRhr");
+
+MQTTSwitch* relaisLight = new MQTTSwitch(deviceInfo, "T1VMmW", RELAIS_PIN, "relais_light_1");
+
+MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 6, 3);
 
 void setup() {
-  Serial.begin(9600);
-  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD);
-  relaisSwitch -> setupActor(mqttClient);
-  mqttClient -> setupClient(&client, MQTT_BROKER, MQTT_PORT);
-  client.setCallback(callback);
+  //Serial.begin(9600);
+  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD); 
+  
+  client.begin(MQTT_BROKER, MQTT_PORT, espClient);
+  client.onMessage(messageReceived);
 
-  relaisSwitch -> executeDefaultAction(mqttClient);
+  mqttClient -> setupClient(&client);
+  //mqttClient -> setVerbose(true);
+  
+  mqttDeviceService -> setResetStateConsumer(resetSwitch);
+  mqttDeviceService -> addPublisher(devicePing);
+  mqttDeviceService -> addStateConsumer(relaisLight);
+  mqttDeviceService -> setupMQTTDevices();
 }
 
 void loop() {
   checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
-  mqttClient -> loopClient();
-  relaisSwitch -> applySwitchStatus();
-  delay(50);
+  mqttDeviceService -> executeLoop();
+  delay(100);
 }
 
-void callback(char* topic, byte* message, unsigned int length) {
-  Serial.print("Message arrived on topic: ");
-  Serial.print(topic);
-  Serial.print(". Message: ");
-  String messageTemp;
-  String topicTemp(topic);
-  
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)message[i]);
-    messageTemp += (char)message[i];
-  }
-  Serial.println();
-  relaisSwitch -> consumeMessage(mqttClient, topicTemp, messageTemp);
+void messageReceived(String &topic, String &payload) {
+  Serial.println("incoming: " + topic + " - " + payload);
+  mqttDeviceService -> handleMessage(topic, payload);
 }
