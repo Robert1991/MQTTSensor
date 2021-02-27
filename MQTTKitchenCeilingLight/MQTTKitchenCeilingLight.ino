@@ -1,44 +1,24 @@
-#include <IOTClients.h>
-#include <MQTTDevices.h>
-#include "credentials.h"
+#include <DeviceRuntime.h>
 
 #define RELAIS_PIN 0
 
+const int BUILD_NUMBER = 0;
+const String DEVICE_ID = "JNDHbc";
+const String DEVICE_PING_ID = "Fz3npn";
+const String DEVICE_RESET_SWITCH_ID = "T1VMmW";
+
 WiFiClient espClient;
-MQTTClient client(750);
-MessageQueueClient* mqttClient = new MessageQueueClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
-
-MQTTDeviceInfo deviceInfo = {"JNDHbc" ,"kitchen_ceiling_light_1", "homeassistant", "ESP-01S", "RoboTronix"};
-MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo, "Fz3npn", 30000);
-MQTTDeviceResetSwitch* resetSwitch = new MQTTDeviceResetSwitch(deviceInfo, "DvnRhr");
-
-MQTTSwitch* relaisLight = new MQTTSwitch(deviceInfo, "T1VMmW", RELAIS_PIN, "relais_light_1");
-
-MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 6, 3);
 
 void setup() {
-  //Serial.begin(9600);
-  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD); 
-  
-  client.begin(MQTT_BROKER, MQTT_PORT, espClient);
-  client.onMessage(messageReceived);
-
-  mqttClient -> setupClient(&client);
-  //mqttClient -> setVerbose(true);
-  
-  mqttDeviceService -> setResetStateConsumer(resetSwitch);
-  mqttDeviceService -> addPublisher(devicePing);
-  mqttDeviceService -> addStateConsumer(relaisLight);
-  mqttDeviceService -> setupMQTTDevices();
+  // Serial.begin(9600);
+  setupDevice(espClient, DEVICE_ID, BUILD_NUMBER, 1, DEVICE_PING_ID, DEVICE_RESET_SWITCH_ID,
+              setupMqttSensorActors);
 }
 
-void loop() {
-  checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
-  mqttDeviceService -> executeLoop();
-  delay(100);
-}
+void loop() { loopDevice(200); }
 
-void messageReceived(String &topic, String &payload) {
-  Serial.println("incoming: " + topic + " - " + payload);
-  mqttDeviceService -> handleMessage(topic, payload);
+void setupMqttSensorActors() {
+  MQTTSwitch *relaisLight =
+      new MQTTSwitch(deviceInfo, "T1VMmW", RELAIS_PIN, "relais_light_1", "light", false);
+  registerMQTTDevice(relaisLight);
 }

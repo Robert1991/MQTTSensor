@@ -1,44 +1,29 @@
-#include <IOTClients.h>
-#include <MQTTDevices.h>
-#include "credentials.h"
+#include <DeviceRuntime.h>
 
+#define FLASH_BUTTON_PIN 0
 #define PHOTO_SENSOR_PIN A0
+#define LIGHT_PIN D3
+
+const int BUILD_NUMBER = 0;
+const String DEVICE_ID = "XT9Ohl";
+const String DEVICE_PING_ID = "UzBJqg";
+const String DEVICE_RESET_SWITCH_ID = "k6lnfO";
 
 WiFiClient espClient;
 MQTTClient client(750);
-MessageQueueClient* mqttClient = new MessageQueueClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
-
-MQTTDeviceInfo deviceInfo = {"XT9Ohl" ,"former_ikea_light", "homeassistant", "Node MCU", "RoboTronix"};
-MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo,"UzBJqg", 30000);
-MQTTDeviceResetSwitch* resetSwitch = new MQTTDeviceResetSwitch(deviceInfo, "k6lnfO");
-MQTTSwitch* transistorLight = new MQTTSwitch(deviceInfo, "ODQ7Jt", D3);
-MQTTPhotoLightSensor* photoSensor = new MQTTPhotoLightSensor(deviceInfo,"zMvxqy", PHOTO_SENSOR_PIN);
-
-MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 4, 2);
 
 void setup() {
-  //Serial.begin(9600);
-  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD); 
-  
-  client.begin(MQTT_BROKER, MQTT_PORT, espClient);
-  client.onMessage(messageReceived);
-
-  mqttClient -> setupClient(&client);
-  //mqttClient -> setVerbose(true);
-  mqttDeviceService -> setResetStateConsumer(resetSwitch);
-  mqttDeviceService -> addPublisher(photoSensor);
-  mqttDeviceService -> addPublisher(devicePing);
-  mqttDeviceService -> addStateConsumer(transistorLight);
-  mqttDeviceService -> setupMQTTDevices();
+  // Serial.begin(9600);
+  setupDevice(espClient, DEVICE_ID, BUILD_NUMBER, FLASH_BUTTON_PIN, DEVICE_PING_ID, DEVICE_RESET_SWITCH_ID,
+              setupMqttSensorActors);
 }
 
-void loop() {
-  checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
-  mqttDeviceService -> executeLoop();
-  delay(100);
+void setupMqttSensorActors() {
+  MQTTSwitch *transistorLight = new MQTTSwitch(getMQTTDeviceInfo(), "ODQ7Jt", LIGHT_PIN);
+  registerMQTTDevice(transistorLight);
+  MQTTPhotoLightSensor *photoSensor =
+      new MQTTPhotoLightSensor(getMQTTDeviceInfo(), "zMvxqy", PHOTO_SENSOR_PIN);
+  registerMQTTDevice(photoSensor);
 }
 
-void messageReceived(String &topic, String &payload) {
-  Serial.println("incoming: " + topic + " - " + payload);
-  mqttDeviceService -> handleMessage(topic, payload);
-}
+void loop() { loopDevice(100); }

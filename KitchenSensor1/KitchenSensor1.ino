@@ -1,56 +1,39 @@
-#include "credentials.h"
-#include "IOTClients.h"
-#include <MQTTDevices.h>
+#include <DeviceRuntime.h>
 
 #define PHOTO_SENSOR_PIN A0
 #define DOOR_SENSOR_PIN D1
 #define MOTION_SENSOR_PIN D2
 #define DHT_PIN D3
 #define DHTTYPE DHT11
+#define FLASH_BUTTON_PIN 0
+
+const int BUILD_NUMBER = 0;
+const String DEVICE_ID = "2VgWWW";
+const String DEVICE_PING_ID = "urT3UA";
+const String DEVICE_RESET_SWITCH_ID = "SJGZoR";
 
 WiFiClient espClient;
-MQTTClient client(750);
-MessageQueueClient* mqttClient = new MessageQueueClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
-
-MQTTDeviceInfo deviceInfo = {"2VgWWW" ,"kitchen_sensor_1", "homeassistant", "Node MCU", "RoboTronix"};
-MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo,"urT3UA", 30000);
-MQTTDeviceResetSwitch* resetSwitch = new MQTTDeviceResetSwitch(deviceInfo, "SJGZoR");
-
-MQTTDoorSensor* doorSensor = new MQTTDoorSensor(deviceInfo, "lEqFzg", DOOR_SENSOR_PIN);
-MQTTMotionSensor* motionSensor = new MQTTMotionSensor(deviceInfo, "ywseEo", MOTION_SENSOR_PIN, 15, 20, 9);
-MQTTPhotoLightSensor* photoSensor = new MQTTPhotoLightSensor(deviceInfo, "ulHFRc", PHOTO_SENSOR_PIN);
 DHT dht(DHT_PIN, DHTTYPE);
-MQTTHumiditySensor* humiditySensor = new MQTTHumiditySensor(deviceInfo, &dht, "p1uDD4");
-MQTTTemperatureSensor* temperatureSensor = new MQTTTemperatureSensor(deviceInfo, &dht, "czt75Q");
-
-MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 8, 1);
 
 void setup() {
-  //Serial.begin(9600);
-  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD); 
-  client.begin(MQTT_BROKER, MQTT_PORT, espClient);
-  client.onMessage(messageReceived);
-  
-  //mqttClient -> setVerbose(true);
-  mqttClient -> setupClient(&client);
-
-  mqttDeviceService -> setResetStateConsumer(resetSwitch);
-  mqttDeviceService -> addPublisher(devicePing);
-  mqttDeviceService -> addPublisher(motionSensor);
-  mqttDeviceService -> addPublisher(humiditySensor);
-  mqttDeviceService -> addPublisher(photoSensor);
-  mqttDeviceService -> addPublisher(temperatureSensor);  
-  mqttDeviceService -> addPublisher(doorSensor);
-  mqttDeviceService -> setupMQTTDevices();
+  // Serial.begin(9600);
+  setupDevice(espClient, DEVICE_ID, BUILD_NUMBER, FLASH_BUTTON_PIN, DEVICE_PING_ID, DEVICE_RESET_SWITCH_ID,
+              setupMqttSensorActors);
+}
+void setupMqttSensorActors() {
+  MQTTInputPullUpSensor *doorSensor =
+      new MQTTInputPullUpSensor(getMQTTDeviceInfo(), "lEqFzg", DOOR_SENSOR_PIN, "door", "door_open");
+  registerMQTTDevice(doorSensor);
+  MQTTMotionSensor *motionSensor =
+      new MQTTMotionSensor(getMQTTDeviceInfo(), "ywseEo", MOTION_SENSOR_PIN, 15, 20, 9);
+  registerMQTTDevice(motionSensor);
+  MQTTPhotoLightSensor *photoSensor =
+      new MQTTPhotoLightSensor(getMQTTDeviceInfo(), "ulHFRc", PHOTO_SENSOR_PIN);
+  registerMQTTDevice(photoSensor);
+  MQTTHumiditySensor *humiditySensor = new MQTTHumiditySensor(getMQTTDeviceInfo(), &dht, "p1uDD4");
+  registerMQTTDevice(humiditySensor);
+  MQTTTemperatureSensor *temperatureSensor = new MQTTTemperatureSensor(getMQTTDeviceInfo(), &dht, "czt75Q");
+  registerMQTTDevice(temperatureSensor);
 }
 
-void loop() {
-  checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
-  mqttDeviceService -> executeLoop();
-  delay(50);
-}
-
-void messageReceived(String &topic, String &payload) {
-  Serial.println("incoming: " + topic + " - " + payload);
-  mqttDeviceService -> handleMessage(topic, payload);
-}
+void loop() { loopDevice(50); }

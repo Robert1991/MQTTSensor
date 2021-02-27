@@ -1,7 +1,4 @@
-#include <IOTClients.h>
-#include <MQTTDevices.h>
-#include "credentials.h"
-#include "DHT.h"
+#include <DeviceRuntime.h>
 
 #define DHT_PIN D1
 #define DHTTYPE DHT11
@@ -10,53 +7,32 @@
 #define LED_STRIP_GREEN_PIN D2
 #define LED_STRIP_BLUE_PIN D6
 
-WiFiClient espClient;
-MQTTClient client(750);
+#define FLASH_BUTTON_PIN 0
 
-MessageQueueClient* mqttClient = new MessageQueueClient(MQTT_CLIENT_NAME, MQTT_USERNAME, MQTT_PASSWORD);
-
-MQTTDeviceInfo deviceInfo = {"9EgmS4" ,"living_room_sensor_actor_1", "homeassistant", "Node MCU", "RoboTronix"};
-MQTTDevicePing* devicePing = new MQTTDevicePing(deviceInfo, "lnwoRM", 30000);
-MQTTDeviceResetSwitch* resetSwitch = new MQTTDeviceResetSwitch(deviceInfo, "JMhc8L");
-
-MQTTMotionSensor* motionSensor = new MQTTMotionSensor(deviceInfo, "VM5ts3", MOTION_SENSOR_PIN, 15, 20, 9);
+const int BUILD_NUMBER = 0;
+const String DEVICE_ID = "9EgmS4";
+const String DEVICE_PING_ID = "lnwoRM";
+const String DEVICE_RESET_SWITCH_ID = "JMhc8L";
 
 DHT dht(DHT_PIN, DHTTYPE);
-MQTTHumiditySensor* humiditySensor = new MQTTHumiditySensor(deviceInfo, &dht, "2KGqAK");
-MQTTTemperatureSensor* temperatureSensor = new MQTTTemperatureSensor(deviceInfo, &dht, "VxgFPM");
-
-RGBPins stripPins = {LED_STRIP_RED_PIN, LED_STRIP_GREEN_PIN, LED_STRIP_BLUE_PIN};
-MQTTRgbLight* rgbLight = new MQTTRgbLight(deviceInfo, "L3Pc5A", stripPins);
-
-MQTTDeviceService* mqttDeviceService = new MQTTDeviceService(mqttClient, 6, 2);
+WiFiClient espClient;
 
 void setup() {
-  //Serial.begin(9600);
-  
-  setupWifiConnection(WIFI_SSID, WIFI_PASSWORD); 
-  client.begin(MQTT_BROKER, MQTT_PORT, espClient);
-  client.onMessage(messageReceived);
-  
-  //mqttClient -> setVerbose(true);
-  mqttClient -> setupClient(&client);
-
-  mqttDeviceService -> setResetStateConsumer(resetSwitch);
-  mqttDeviceService -> addPublisher(devicePing);
-  mqttDeviceService -> addPublisher(motionSensor);
-  mqttDeviceService -> addPublisher(humiditySensor);
-  mqttDeviceService -> addPublisher(temperatureSensor);
-  mqttDeviceService -> addStateConsumer(rgbLight);
-  mqttDeviceService -> setupMQTTDevices();
+  // Serial.begin(9600);
+  setupDevice(espClient, DEVICE_ID, BUILD_NUMBER, FLASH_BUTTON_PIN, DEVICE_PING_ID, DEVICE_RESET_SWITCH_ID,
+              setupMqttSensorActors);
 }
 
-void loop() {
-  checkWifiStatus(WIFI_SSID, WIFI_PASSWORD);
-  mqttDeviceService -> executeLoop();
-  
-  delay(50);
-}
+void setupMqttSensorActors() {
+  MQTTMotionSensor *motionSensor = new MQTTMotionSensor(deviceInfo, "VM5ts3", MOTION_SENSOR_PIN, 15, 20, 9);
+  registerMQTTDevice(motionSensor);
+  MQTTHumiditySensor *humiditySensor = new MQTTHumiditySensor(deviceInfo, &dht, "2KGqAK");
+  registerMQTTDevice(humiditySensor);
+  MQTTTemperatureSensor *temperatureSensor = new MQTTTemperatureSensor(deviceInfo, &dht, "VxgFPM");
+  registerMQTTDevice(temperatureSensor);
 
-void messageReceived(String &topic, String &payload) {
-  Serial.println("incoming: " + topic + " - " + payload);
-  mqttDeviceService -> handleMessage(topic, payload);
+  RGBPins stripPins = {LED_STRIP_RED_PIN, LED_STRIP_GREEN_PIN, LED_STRIP_BLUE_PIN};
+  MQTTRgbLight *rgbLight = new MQTTRgbLight(deviceInfo, "L3Pc5A", stripPins);
+  registerMQTTDevice(rgbLight);
 }
+void loop() { loopDevice(50); }
