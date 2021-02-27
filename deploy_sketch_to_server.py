@@ -55,7 +55,7 @@ def get_device_id_from_sketch(sketch_data):
 
 
 def check_for_firmware_header(sketch_data):
-    if sketch_data.startswith(FIRMWARE_HEADER):
+    if FIRMWARE_HEADER in sketch_data:
         return True
     return False
 
@@ -82,7 +82,7 @@ def get_firmware_version_from_version_header(header_data):
         exit(1)
 
 
-def build_sketch_file(sketch_file_path):
+def build_sketch_file(sketch_file_path, board_configuration):
     device_id, build_number = get_device_info_from_sketch(sketch_file_path)
     next_build_number = build_number + 1
     print("Building '" + str(sketch_file_path) + "' with device id '" + device_id + "' in version '" +
@@ -165,7 +165,7 @@ with open(version_header_path, 'r') as version_header_file:
 # checking of input args
 try:
     if len(sys.argv) > 1:
-        opts, args = getopt.getopt(sys.argv[1:], "s:b:l:a:")
+        opts, args = getopt.getopt(sys.argv[1:], "s:b:la:r:")
     else:
         usage()
         sys.exit(2)
@@ -177,10 +177,14 @@ except getopt.GetoptError as err:
 sketch_file_path = None
 board_configuration = "esp8266:esp8266:nodemcuv2"
 build_all_in_folder = False
+reset_build_number_in_folder = False
 build_root_folder_path = None
 for opt, arg in opts:
     if opt == "-s":
         sketch_file_path = arg
+    elif opt == '-r':
+        build_root_folder_path = arg
+        reset_build_number_in_folder = True
     elif opt == '-a':
         build_root_folder_path = arg
         build_all_in_folder = True
@@ -194,13 +198,28 @@ for opt, arg in opts:
         system("arduino-cli board listall | grep esp8266")
         exit(2)
 
-if build_all_in_folder:
+if reset_build_number_in_folder:
+    if path.exists(build_root_folder_path):
+        for sketch_file in find_all_sketches_in(build_root_folder_path):
+            print("Resetting build number in: " + sketch_file)
+            write_build_number_to_sketch(sketch_file, 0)
+elif build_all_in_folder:
     if path.exists(build_root_folder_path):
         print("building all sketches in: " + build_root_folder_path)
         for sketch_file in find_all_sketches_in(build_root_folder_path):
-            build_number, build_file_path = build_sketch_file(sketch_file)
-            publish_device_binaries(
-                sketch_file, build_file_path, build_number)
+
+            board_config_path = path.join(
+                path.dirname(sketch_file), "board.configuration")
+            if path.exists(board_config_path):
+                with open(board_config_path) as board_config_file:
+                    board_configuration = board_config_file.read()
+                build_number, build_file_path = build_sketch_file(
+                    sketch_file, board_configuration)
+                publish_device_binaries(
+                    sketch_file, build_file_path, build_number)
+            else:
+                print("Skipping " + sketch_file +
+                      "... board configuration not available")
     else:
         print("folder does not exist: " + build_root_folder_path)
         exit(1)
@@ -210,6 +229,7 @@ else:
         exit(1)
 
     # Building
-    build_number, build_file_path = build_sketch_file(sketch_file_path)
+    build_number, build_file_path = build_sketch_file(
+        sketch_file_path, board_configuration)
     # Publishing
     publish_device_binaries(sketch_file_path, build_file_path, build_number)
