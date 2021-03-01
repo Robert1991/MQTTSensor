@@ -10,7 +10,7 @@
 #define DHT_PIN D8
 #define DHTTYPE DHT22
 
-const int BUILD_NUMBER = 0;
+const int BUILD_NUMBER = 4;
 const String DEVICE_ID = "bb69Mc";
 const String DEVICE_PING_ID = "drkmge";
 const String DEVICE_RESET_SWITCH_ID = "0Em8Zf";
@@ -36,4 +36,4 @@ void setupMqttSensorActors() {
   registerMQTTDevice(temperatureSensor);
 }
 
-void loop() { loopDevice(200); }
+void loop() { loopDevice(300); }

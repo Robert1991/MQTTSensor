@@ -10,7 +10,7 @@ const String DEVICE_RESET_SWITCH_ID = "aTbxnT";
 const String DEVICE_FAN_SWITCH_ID = "aTbxnT";
 const String DEVICE_BATTERY_SENSOR_ID = "AolIP2";
 
-const int BUILD_NUMBER = 0;
+const int BUILD_NUMBER = 4;
 
 WiFiClient espClient;
 

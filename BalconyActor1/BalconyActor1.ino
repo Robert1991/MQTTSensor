@@ -8,7 +8,7 @@
 
 #define FLASH_BUTTON_PIN 0
 
-const int BUILD_NUMBER = 0;
+const int BUILD_NUMBER = 4;
 const String DEVICE_ID = "NStlwd";
 const String DEVICE_PING_ID = "wJvJZH";
 const String DEVICE_RESET_SWITCH_ID = "pshrng";
@@ -21,7 +21,7 @@ void setup() {
               setupMqttSensorActors);
 }
 
-void loop() { loopDevice(100); }
+void loop() { loopDevice(300); }
 
 void setupMqttSensorActors() {
   MQTTSwitch *relaisLight1 = new MQTTSwitch(getMQTTDeviceInfo(), "OqxzUZ", RELAIS_PIN_1, "relais_light_1");

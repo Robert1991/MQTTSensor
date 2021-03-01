@@ -129,6 +129,15 @@ def find_all_sketches_in(directory):
     return sketch_file_paths
 
 
+def get_board_configuration(sketch_file_path):
+    board_config_path = path.join(
+        path.dirname(sketch_file_path), "board.configuration")
+    if path.exists(board_config_path):
+        with open(board_config_path) as board_config_file:
+            return board_config_file.read()
+    return None
+
+
 def usage():
     print("usage: deploy_sketch_to_server.py -s <sketch_file>")
 
@@ -207,14 +216,10 @@ elif build_all_in_folder:
     if path.exists(build_root_folder_path):
         print("building all sketches in: " + build_root_folder_path)
         for sketch_file in find_all_sketches_in(build_root_folder_path):
-
-            board_config_path = path.join(
-                path.dirname(sketch_file), "board.configuration")
-            if path.exists(board_config_path):
-                with open(board_config_path) as board_config_file:
-                    board_configuration = board_config_file.read()
+            current_board_config = get_board_configuration(sketch_file)
+            if current_board_config:
                 build_number, build_file_path = build_sketch_file(
-                    sketch_file, board_configuration)
+                    sketch_file, current_board_config)
                 publish_device_binaries(
                     sketch_file, build_file_path, build_number)
             else:

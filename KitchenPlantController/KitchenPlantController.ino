@@ -7,7 +7,7 @@
 #define DHT_PIN D3
 #define DHTTYPE DHT22
 
-const int BUILD_NUMBER = 0;
+const int BUILD_NUMBER = 4;
 const String DEVICE_ID = "BXJpj7";
 const String DEVICE_PING_ID = "BUXZN3";
 const String DEVICE_RESET_SWITCH_ID = "g9GJjv";
@@ -17,7 +17,7 @@ DHT dht(DHT_PIN, DHTTYPE);
 Adafruit_ADS1115 ads;
 
 void setup() {
-  Serial.begin(9600);
+  // Serial.begin(9600);
   ads.begin();
   setupDevice(client, DEVICE_ID, BUILD_NUMBER, FLASH_BUTTON_PIN, DEVICE_PING_ID, DEVICE_RESET_SWITCH_ID,
               setupMqttSensorActors);
@@ -51,4 +51,4 @@ void setupMqttSensorActors() {
   registerMQTTDevice(temperatureSensor);
 }
 
-void loop() { loopDevice(250); }
+void loop() { loopDevice(400); }

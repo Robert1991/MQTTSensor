@@ -7,7 +7,7 @@
 #define DOOR_SENSOR_PIN D2
 #define FLASH_BUTTON_PIN 0
 
-const int BUILD_NUMBER = 0;
+const int BUILD_NUMBER = 4;
 const String DEVICE_ID = "EuZQUg";
 const String DEVICE_PING_ID = "6fp4mh";
 const String DEVICE_RESET_SWITCH_ID = "CMOph5";
@@ -23,7 +23,7 @@ void setup() {
               setupMqttSensorActors);
 }
 
-void loop() { loopDevice(200); }
+void loop() { loopDevice(300); }
 
 void setupMqttSensorActors() {
   MQTTInputPullUpSensor *doorSensor =

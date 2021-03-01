@@ -4,7 +4,7 @@
 #define PHOTO_SENSOR_PIN A0
 #define LIGHT_PIN D3
 
-const int BUILD_NUMBER = 0;
+const int BUILD_NUMBER = 5;
 const String DEVICE_ID = "XT9Ohl";
 const String DEVICE_PING_ID = "UzBJqg";
 const String DEVICE_RESET_SWITCH_ID = "k6lnfO";
@@ -26,4 +26,4 @@ void setupMqttSensorActors() {
   registerMQTTDevice(photoSensor);
 }
 
-void loop() { loopDevice(100); }
+void loop() { loopDevice(300); }

@@ -7,7 +7,7 @@
 #define DHTTYPE DHT11
 #define FLASH_BUTTON_PIN 0
 
-const int BUILD_NUMBER = 0;
+const int BUILD_NUMBER = 4;
 const String DEVICE_ID = "2VgWWW";
 const String DEVICE_PING_ID = "urT3UA";
 const String DEVICE_RESET_SWITCH_ID = "SJGZoR";
@@ -36,4 +36,4 @@ void setupMqttSensorActors() {
   registerMQTTDevice(temperatureSensor);
 }
 
-void loop() { loopDevice(50); }
+void loop() { loopDevice(300); }
